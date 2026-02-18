@@ -116,7 +116,14 @@ func Scan(targets []string, cfg Config) (*ScanResult, error) {
 	}
 
 	allowedExts := cfg.allowedExtensions()
-	rules := DefaultRules()
+
+	// KEY CHANGE: Choose the rule set based on the ScanBinaries flag
+	var rules []Rule
+	if cfg.ScanBinaries {
+		rules = DefaultBinaryRules() // Use the binary-specific ruleset
+	} else {
+		rules = DefaultRules() // Use the full text-based ruleset
+	}
 
 	for _, target := range targets {
 		info, err := os.Stat(target)
@@ -193,12 +200,12 @@ func filterFindings(findings []Finding, cfg Config) []Finding {
 		if f.Category == "False Positive Filter" {
 			continue
 		}
-
+		
 		// Skip findings below minimum severity
 		if f.Severity < cfg.MinSeverity {
 			continue
 		}
-
+		
 		// Add additional filtering logic here if needed
 		filtered = append(filtered, f)
 	}
