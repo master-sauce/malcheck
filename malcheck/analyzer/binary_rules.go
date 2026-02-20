@@ -1,120 +1,159 @@
 package analyzer
 
-
-
-
-// BinaryRules returns rules specific to binary analysis
+// BinaryRules returns rules for compiled binary analysis via strings output.
+// Philosophy: binaries produce a lot of noise from runtime strings, help text,
+// and symbol names. Rules here require very specific patterns that are nearly
+// impossible to explain as innocent runtime artefacts.
 func BinaryRules() []Rule {
 	return []Rule{
-		// Binary-specific rules
-		newRule("BIN001", "Embedded PE signature", "Binary Analysis", High,
-			"PE executable signature found in binary",
-			`(?i)MZ\x90\x00`,
-			"mz"),
 
-		newRule("BIN002", "Embedded ELF signature", "Binary Analysis", High,
-			"ELF executable signature found in binary",
-			`(?i)\x7fELF`,
-			"elf"),
-
-		newRule("BIN003", "Suspicious string in binary", "Binary Analysis", Medium,
-			"Suspicious string pattern found in binary",
-			`(?i)(password|secret|key|token|api)\s*[:=]\s*['"][^'"]{4,}['"]`,
-			"password", "secret", "key", "token", "api"),
-
-		newRule("BIN004", "URL in binary", "Binary Analysis", Medium,
-			"URL found in binary",
+		newRule("URL001", "URL in file", "url in file", Medium,
+			"URL found in file",
 			`(?i)https?://[^\s/$.?#].[^\s]*`,
 			"http://", "https://"),
 
-		newRule("BIN005", "IP address in binary", "Binary Analysis", Medium,
-			"IPv4 or IPv6 address found in binary",
+		newRule("IP001", "IP address in file", "ip in file", Medium,
+			"IPv4 or IPv6 address found in file",
 			`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b|(?:(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(?::[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::ffff:(?:(?:[0-9]{1,3}\.){3}[0-9]{1,3})|(?:(?:[0-9a-fA-F]{1,4}:){1,4}:(?:[0-9]{1,3}\.){3}[0-9]{1,3}))`,
 			"192.168", "10.0", "127.0", "2001", "fe80", "::1", "::ffff"),
 
-		newRule("BIN006", "Base64 encoded data", "Binary Analysis", Low,
-			"Base64 encoded data found in binary",
-			`[A-Za-z0-9+/]{20,}={0,2}`,
-			"aGVsbG8", "d29ybGQ="),
+		// ─── C2 / NETWORK ────────────────────────────────────────────────────
 
-		newRule("BIN007", "Registry key path", "Binary Analysis", Medium,
-			"Windows registry key path found in binary",
-			`(?i)(HKLM|HKCU)\\Software\\Microsoft\\Windows\\CurrentVersion`,
-			"hklm", "hkcu", "software\\microsoft\\windows"),
+		newRule("BNET001", "Reverse shell string", "C2/Backdoor", Critical,
+			"Reverse shell command string embedded in binary",
+			`(?i)(bash\s+-i\s+>&?\s*/dev/tcp/|/bin/(ba)?sh\s+-i\s+>&|nc\s+.*-e\s+/bin/(ba)?sh)`,
+			"/dev/tcp", "-e /bin"),
 
-		// More precise Windows API rule
-		newRule("BIN008", "Suspicious Windows API pattern", "Binary Analysis", High,
-			"Suspicious combination of Windows API calls",
-			`(?i)(VirtualAlloc.*WriteProcessMemory|CreateRemoteThread|VirtualProtect.*PAGE_EXECUTE_READWRITE)`,
-			"virtualalloc", "writeprocessmemory", "createremotethread", "page_execute_readwrite"),
+		newRule("BNET002", "PowerShell download cradle", "C2/Backdoor", Critical,
+			"PowerShell download-and-execute cradle embedded in binary",
+			`(?i)(IEX|Invoke-Expression)\s*\(?\s*(New-Object\s+Net\.WebClient|Invoke-WebRequest)`,
+			"iex", "invoke-expression", "webclient"),
 
-		// More precise Linux syscall rule
-		newRule("BIN009", "Linux syscall", "Binary Analysis", Medium,
-			"Direct Linux syscall invocation",
-			`(?i)(syscall\.Syscall\s*$$|syscall\.RawSyscall\s*$$|__NR_|SYS_)`,
-			"syscall", "syscall.syscall", "rawsyscall"),
+		newRule("BNET003", "PowerShell encoded command", "C2/Backdoor", Critical,
+			"PowerShell -EncodedCommand with a payload — hidden execution",
+			`(?i)powershell(\.exe)?\s+.*-enc(odedcommand)?\s+[A-Za-z0-9+/=]{40,}`,
+			"-enc", "-encodedcommand"),
 
-		// More precise Suspicious command rule
-		newRule("BIN010", "Suspicious command", "Binary Analysis", High,
-			"Suspicious command found in binary",
-			`(?i)(\bcmd\.exe\b|\bpowershell\.exe\b|\bbash\b\s+|\bsh\b\s+|\b/bin/sh\b\s+|\bsystem\s*$$)`,
-			"cmd.exe", "powershell.exe", "bash ", "sh ", "/bin/sh "),
+		newRule("BNET004", "curl/wget pipe to shell", "C2/Backdoor", Critical,
+			"Shell command fetching and executing remote code",
+			`(?i)(curl|wget)\s+https?://[^\s]+\s*\|\s*(ba)?sh`,
+			"curl", "wget"),
 
-		// False positive filter for Go runtime functions
-		newRule("GO001", "Go runtime function", "False Positive Filter", Low,
-			"Legitimate Go runtime function (ignore)",
-			`(?i)(runtime\.|internal/|syscall\.proc|internal/syscall)`,
-			"runtime.", "internal/", "syscall.proc"),
-	}
-}
+		newRule("BNET005", "C2 domain/IP with port", "C2/Backdoor", High,
+			"Non-local IP:port or domain:port pattern typical of C2 beacons",
+			`(?i)(connect|dial|socket)\s*[\s\S]{0,60}([1-9]\d{1,2}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}|[a-z0-9-]{4,}\.[a-z]{2,}:\d{2,5})`,
+			"connect", "dial"),
 
+		newRule("BNET006", "LHOST/LPORT beacon config", "C2/Backdoor", High,
+			"Metasploit-style listener config strings in binary",
+			`(?i)\b(LHOST|LPORT)\s*=\s*[\d"']`,
+			"lhost", "lport"),
 
+		// ─── PERSISTENCE ─────────────────────────────────────────────────────
 
-// DefaultBinaryRules returns the ruleset specifically for BINARY file analysis.
-// It combines base binary rules with other relevant high-level rules.
-func DefaultBinaryRules() []Rule {
-	// Start with the specific binary rules from binary_rules.go
-	binarySpecificRules := BinaryRules()
+		newRule("BPER001", "Autorun registry write string", "Persistence", High,
+			"Registry Run key path string — binary writing persistence",
+			`(?i)(Software\\Microsoft\\Windows\\CurrentVersion\\Run\\|HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run)`,
+			"currentversion\\run"),
 
-	// Add any other rules from baseRules() that are also relevant for binaries
-	// For example, hardcoded credentials, URLs, etc. are useful in binaries too.
-	relevantBaseRules := []Rule{
-		// Credentials
-		newRule("CRED001", "Hardcoded password", "Credential", High,
-			"Password assigned directly in source code",
-			`(?i)(password|passwd|pwd|secret)\s*[:=]\s*['"][^'"]{4,}['"]`,
-			"password", "passwd", "secret"),
+		newRule("BPER002", "Cron write string", "Persistence", High,
+			"Cron path string with write intent in binary",
+			`(?i)(echo|printf|write|fwrite)\s*[\s\S]{0,100}/etc/cron`,
+			"/etc/cron"),
 
-		newRule("CRED002", "Hardcoded API key / token", "Credential", High,
-			"API key or bearer token embedded in code",
-			`(?i)(api[_-]?key|api[_-]?secret|auth[_-]?token|bearer)\s*[:=]\s*['"][A-Za-z0-9\-_\.]{16,}['"]`,
-			"api_key", "api-key", "auth_token", "bearer"),
+		newRule("BPER003", "SSH authorized_keys path", "Persistence", High,
+			"authorized_keys path found — potential SSH backdoor",
+			`\.ssh/authorized_keys`,
+			"authorized_keys"),
 
-		newRule("CRED003", "AWS access key", "Credential", Critical,
-			"Hardcoded AWS credentials",
-			`(?i)AKIA[0-9A-Z]{16}`,
+		newRule("BPER004", "LD_PRELOAD injection", "Persistence", High,
+			"LD_PRELOAD set to a .so file — library injection",
+			`LD_PRELOAD\s*=\s*[^\s]{4,}\.so`,
+			"ld_preload"),
+
+		// ─── PROCESS INJECTION ───────────────────────────────────────────────
+
+		newRule("BINJ001", "Process injection API combo", "Process Injection", Critical,
+			"VirtualAllocEx + WriteProcessMemory or CreateRemoteThread — injection triad",
+			`(?i)(VirtualAllocEx|WriteProcessMemory|CreateRemoteThread)`,
+			"virtualallocex", "writeprocessmemory", "createremotethread"),
+
+		newRule("BINJ002", "RWX shellcode allocation", "Process Injection", Critical,
+			"PAGE_EXECUTE_READWRITE memory allocation — shellcode staging",
+			`(?i)(PAGE_EXECUTE_READWRITE|PROT_READ\|PROT_WRITE\|PROT_EXEC|0x40)[\s\S]{0,100}(VirtualAlloc|mmap)`,
+			"page_execute_readwrite", "prot_exec"),
+
+		newRule("BINJ003", "Process hollowing strings", "Process Injection", Critical,
+			"CREATE_SUSPENDED + NtUnmapViewOfSection — hollowing pair",
+			`(?i)(CREATE_SUSPENDED|NtUnmapViewOfSection|ZwUnmapViewOfSection)`,
+			"create_suspended", "ntunmapviewofsection", "zwunmapviewofsection"),
+
+		// ─── EVASION ─────────────────────────────────────────────────────────
+
+		newRule("BEVA001", "Debugger detection API", "Evasion", High,
+			"IsDebuggerPresent or PEB.BeingDebugged — anti-debug",
+			`(?i)(IsDebuggerPresent|CheckRemoteDebuggerPresent|PEB\.BeingDebugged|NtQueryInformationProcess)`,
+			"isdebuggerpresent", "beingdebugged"),
+
+		newRule("BEVA002", "VM artifact strings", "Evasion", High,
+			"VMware/VirtualBox/QEMU string checks — sandbox evasion",
+			`(?i)(vmware|vbox|virtualbox|qemu|sandboxie|cuckoo|wireshark|procmon|x64dbg|ollydbg)`,
+			"vmware", "vbox", "virtualbox", "qemu", "sandboxie"),
+
+		newRule("BEVA003", "Log wipe command", "Evasion", High,
+			"Shell command clearing logs or history — covering tracks",
+			`(?i)(history\s+-c|unset\s+HISTFILE|HISTSIZE=0|rm\s+-f\s+[^\s]*\.bash_history|>\s*/var/log/)`,
+			"histfile", "histsize", "bash_history"),
+
+		// ─── CREDENTIAL THEFT ────────────────────────────────────────────────
+
+		newRule("BCRED001", "LSASS dump string", "Credential Theft", Critical,
+			"LSASS dump tooling strings — credential extraction",
+			`(?i)(MiniDumpWriteDump|lsass\.exe|comsvcs\.dll[\s\S]{0,50}MiniDump)`,
+			"lsass", "minidumpwritedump"),
+
+		newRule("BCRED002", "Hardcoded AWS key", "Credential Theft", Critical,
+			"AWS access key ID embedded in binary",
+			`AKIA[0-9A-Z]{16}`,
 			"akia"),
 
-		// Network
-		newRule("NET005", "Download and execute", "Network/Backdoor", High,
-			"Fetching remote content and executing it",
-			`(?i)(Invoke-WebRequest|Invoke-Expression|iex\s*$$|DownloadString|DownloadFile)`,
-			"invoke-webrequest", "invoke-expression", "iex", "downloadstring"),
+		newRule("BCRED003", "Shadow/passwd file path", "Credential Theft", High,
+			"Accessing /etc/shadow or SAM — credential file theft",
+			`(?i)(/etc/shadow|/etc/passwd|\\SAM\b|\\SYSTEM\b|\\SECURITY\b)`,
+			"/etc/shadow", "\\sam", "\\system"),
 
-		// Obfuscation
-		newRule("OBF001", "Base64 decode + execute", "Obfuscation", High,
-			"Decoding base64 content before execution is a common obfuscation tactic",
-			`(?i)(base64[_-]?decode|atob|FromBase64String|from_base64)\s*$$`,
-			"base64_decode", "atob", "frombase64"),
+		// ─── LOLBin ──────────────────────────────────────────────────────────
 
-		newRule("OBF002", "PowerShell encoded command", "Obfuscation", Critical,
-			"-EncodedCommand or -enc used to hide PS payload",
-			`(?i)powershell.*(-enc|-encodedcommand)\s+[A-Za-z0-9+/=]{20,}`,
-			"-enc", "-encodedcommand"),
+		newRule("BLOL001", "Certutil abuse", "LOLBin", High,
+			"certutil with download or decode flags — dropper pattern",
+			`(?i)certutil\s+[^\n]*(-urlcache|-decode|-decodehex)`,
+			"certutil"),
+
+		newRule("BLOL002", "WMIC process create", "LOLBin", High,
+			"WMIC process call create — execution bypass",
+			`(?i)wmic\s+[^\n]*process\s+[^\n]*call\s+create`,
+			"wmic"),
+
+		newRule("BLOL003", "Regsvr32 scriptlet", "LOLBin", High,
+			"regsvr32 /s with scrobj or remote path — AppLocker bypass",
+			`(?i)regsvr32\s+[^\n]*/s\s+[^\n]*(scrobj|http|\\\\)`,
+			"regsvr32"),
+
+		// ─── DESTRUCTIVE ─────────────────────────────────────────────────────
+
+		newRule("BDST001", "Root deletion command", "Destructive", Critical,
+			"rm -rf targeting root or critical directories",
+			`(?i)rm\s+-[rRf]+\s+(/\s*$|/\*|/home|/etc|/var|/usr|/boot)`,
+			"rm -"),
+
+		newRule("BDST002", "Disk wipe command", "Destructive", Critical,
+			"dd writing to raw disk device — disk wipe",
+			`(?i)dd\s+[^\n]*of=/dev/(sd[a-z]|nvme\d|vd[a-z])`,
+			"dd ", "/dev/sd", "/dev/nvme"),
+
+		newRule("BDST003", "Ransomware known family", "Destructive", Critical,
+			"Known ransomware family name string",
+			`(?i)\b(WannaCry|Petya|NotPetya|REvil|Conti|LockBit|BlackCat|Ryuk|Maze)\b`,
+			"wannacry", "petya", "revil", "conti", "lockbit"),
 	}
-
-	// Combine them
-	return append(binarySpecificRules, relevantBaseRules...)
 }
-
-
