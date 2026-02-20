@@ -66,52 +66,52 @@ func DefaultRules() []Rule {
 	return baseRules()
 }
 
-// DefaultBinaryRules returns the ruleset specifically for BINARY file analysis.
-// It combines base binary rules with other relevant high-level rules.
-func DefaultBinaryRules() []Rule {
-	// Start with the specific binary rules from binary_rules.go
-	binarySpecificRules := BinaryRules()
+// // DefaultBinaryRules returns the ruleset specifically for BINARY file analysis.
+// // It combines base binary rules with other relevant high-level rules.
+// func DefaultBinaryRules() []Rule {
+// 	// Start with the specific binary rules from binary_rules.go
+// 	binarySpecificRules := BinaryRules()
 
-	// Add any other rules from baseRules() that are also relevant for binaries
-	// For example, hardcoded credentials, URLs, etc. are useful in binaries too.
-	relevantBaseRules := []Rule{
-		// Credentials
-		newRule("CRED001", "Hardcoded password", "Credential", High,
-			"Password assigned directly in source code",
-			`(?i)(password|passwd|pwd|secret)\s*[:=]\s*['"][^'"]{4,}['"]`,
-			"password", "passwd", "secret"),
+// 	// Add any other rules from baseRules() that are also relevant for binaries
+// 	// For example, hardcoded credentials, URLs, etc. are useful in binaries too.
+// 	relevantBaseRules := []Rule{
+// 		// Credentials
+// 		newRule("CRED001", "Hardcoded password", "Credential", High,
+// 			"Password assigned directly in source code",
+// 			`(?i)(password|passwd|pwd|secret)\s*[:=]\s*['"][^'"]{4,}['"]`,
+// 			"password", "passwd", "secret"),
 
-		newRule("CRED002", "Hardcoded API key / token", "Credential", High,
-			"API key or bearer token embedded in code",
-			`(?i)(api[_-]?key|api[_-]?secret|auth[_-]?token|bearer)\s*[:=]\s*['"][A-Za-z0-9\-_\.]{16,}['"]`,
-			"api_key", "api-key", "auth_token", "bearer"),
+// 		newRule("CRED002", "Hardcoded API key / token", "Credential", High,
+// 			"API key or bearer token embedded in code",
+// 			`(?i)(api[_-]?key|api[_-]?secret|auth[_-]?token|bearer)\s*[:=]\s*['"][A-Za-z0-9\-_\.]{16,}['"]`,
+// 			"api_key", "api-key", "auth_token", "bearer"),
 
-		newRule("CRED003", "AWS access key", "Credential", Critical,
-			"Hardcoded AWS credentials",
-			`(?i)AKIA[0-9A-Z]{16}`,
-			"akia"),
+// 		newRule("CRED003", "AWS access key", "Credential", Critical,
+// 			"Hardcoded AWS credentials",
+// 			`(?i)AKIA[0-9A-Z]{16}`,
+// 			"akia"),
 
-		// Network
-		newRule("NET005", "Download and execute", "Network/Backdoor", High,
-			"Fetching remote content and executing it",
-			`(?i)(Invoke-WebRequest|Invoke-Expression|iex\s*$$|DownloadString|DownloadFile)`,
-			"invoke-webrequest", "invoke-expression", "iex", "downloadstring"),
+// 		// Network
+// 		newRule("NET005", "Download and execute", "Network/Backdoor", High,
+// 			"Fetching remote content and executing it",
+// 			`(?i)(Invoke-WebRequest|Invoke-Expression|iex\s*$$|DownloadString|DownloadFile)`,
+// 			"invoke-webrequest", "invoke-expression", "iex", "downloadstring"),
 
-		// Obfuscation
-		newRule("OBF001", "Base64 decode + execute", "Obfuscation", High,
-			"Decoding base64 content before execution is a common obfuscation tactic",
-			`(?i)(base64[_-]?decode|atob|FromBase64String|from_base64)\s*$$`,
-			"base64_decode", "atob", "frombase64"),
+// 		// Obfuscation
+// 		newRule("OBF001", "Base64 decode + execute", "Obfuscation", High,
+// 			"Decoding base64 content before execution is a common obfuscation tactic",
+// 			`(?i)(base64[_-]?decode|atob|FromBase64String|from_base64)\s*$$`,
+// 			"base64_decode", "atob", "frombase64"),
 
-		newRule("OBF002", "PowerShell encoded command", "Obfuscation", Critical,
-			"-EncodedCommand or -enc used to hide PS payload",
-			`(?i)powershell.*(-enc|-encodedcommand)\s+[A-Za-z0-9+/=]{20,}`,
-			"-enc", "-encodedcommand"),
-	}
+// 		newRule("OBF002", "PowerShell encoded command", "Obfuscation", Critical,
+// 			"-EncodedCommand or -enc used to hide PS payload",
+// 			`(?i)powershell.*(-enc|-encodedcommand)\s+[A-Za-z0-9+/=]{20,}`,
+// 			"-enc", "-encodedcommand"),
+// 	}
 
-	// Combine them
-	return append(binarySpecificRules, relevantBaseRules...)
-}
+// 	// Combine them
+// 	return append(binarySpecificRules, relevantBaseRules...)
+// }
 
 // baseRules returns the foundational rules (command injection, network, credentials, etc.)
 func baseRules() []Rule {
