@@ -81,10 +81,10 @@ func baseRules() []Rule {
 			`(?i)https?://[^\s/$.?#].[^\s]*`,
 			"http://", "https://"),
 
-		newRule("IP001", "Public IP address in file", "ip in file", Medium,
-			"Public IPv4 address found in file",
+		newRule("IP001", "IP address in file", "ip in file", Medium,
+			"IPv4 address found in file",
 			`\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`,
-			"8.8.8.8", "1.1.1.1", "208.67.222.222"),
+		),
 
 		// ─── C2 / NETWORK BACKDOOR ───────────────────────────────────────────
 		// These require very specific combinations that legitimate code won't have.
