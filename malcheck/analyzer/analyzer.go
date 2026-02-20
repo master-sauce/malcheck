@@ -69,15 +69,16 @@ func (c Config) allowedExtensions() map[string]bool {
 
 // Finding represents a single detected issue
 type Finding struct {
-	File     string
-	Line     int
-	Column   int
-	Content  string // the matched line
-	RuleID   string
-	RuleName string
-	Category string
-	Severity Severity
-	Details  string
+	File      string
+	Line      int
+	Column    int
+	Content   string // the matched line
+	MatchText string // the specific substring that triggered the rule
+	RuleID    string
+	RuleName  string
+	Category  string
+	Severity  Severity
+	Details   string
 }
 
 // FileResult groups findings per file
@@ -257,18 +258,19 @@ func scanFile(path string, allowedExts map[string]bool, rules []Rule, cfg Config
 			if rule.Severity < cfg.MinSeverity {
 				continue
 			}
-			col, matched := rule.Match(line)
+			col, matchText, matched := rule.Match(line)
 			if matched {
 				fr.Findings = append(fr.Findings, Finding{
-					File:     path,
-					Line:     lineNum,
-					Column:   col,
-					Content:  strings.TrimSpace(line),
-					RuleID:   rule.ID,
-					RuleName: rule.Name,
-					Category: rule.Category,
-					Severity: rule.Severity,
-					Details:  rule.Details,
+					File:      path,
+					Line:      lineNum,
+					Column:    col,
+					Content:   strings.TrimSpace(line),
+					MatchText: matchText,
+					RuleID:    rule.ID,
+					RuleName:  rule.Name,
+					Category:  rule.Category,
+					Severity:  rule.Severity,
+					Details:   rule.Details,
 				})
 			}
 		}
@@ -310,18 +312,19 @@ func scanBinary(path string, rules []Rule, cfg Config) FileResult {
 			if rule.Severity < cfg.MinSeverity {
 				continue
 			}
-			col, matched := rule.Match(line)
+			col, matchText, matched := rule.Match(line)
 			if matched {
 				fr.Findings = append(fr.Findings, Finding{
-					File:     path,
-					Line:     lineNum,
-					Column:   col,
-					Content:  line,
-					RuleID:   rule.ID,
-					RuleName: rule.Name,
-					Category: rule.Category,
-					Severity: rule.Severity,
-					Details:  rule.Details,
+					File:      path,
+					Line:      lineNum,
+					Column:    col,
+					Content:   line,
+					MatchText: matchText,
+					RuleID:    rule.ID,
+					RuleName:  rule.Name,
+					Category:  rule.Category,
+					Severity:  rule.Severity,
+					Details:   rule.Details,
 				})
 			}
 		}

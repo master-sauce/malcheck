@@ -4,16 +4,58 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"malcheck/analyzer"
 	"malcheck/reporter"
 )
 
+func inferFormat(outputFile string) string {
+	if outputFile == "" {
+		return "text"
+	}
+	switch strings.ToLower(filepath.Ext(outputFile)) {
+	case ".json":
+		return "json"
+	case ".csv":
+		return "csv"
+	default:
+		return "text"
+	}
+}
+
+// extractFlag pulls -o/--output (and other known string flags) out of args
+// regardless of position, returning the cleaned args and the extracted value.
+func extractFlag(args []string, short, long string) (cleaned []string, value string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		// --flag=value or -flag=value
+		for _, prefix := range []string{"--" + long + "=", "-" + long + "=", "--" + short + "=", "-" + short + "="} {
+			if strings.HasPrefix(arg, prefix) {
+				value = strings.TrimPrefix(arg, prefix)
+				goto next
+			}
+		}
+		// --flag value or -flag value or -f value
+		if arg == "--"+long || arg == "-"+long || arg == "-"+short || arg == "--"+short {
+			if i+1 < len(args) {
+				value = args[i+1]
+				i++ // skip the value
+				goto next
+			}
+		}
+		cleaned = append(cleaned, arg)
+		continue
+	next:
+	}
+	return
+}
+
 func Execute() error {
 	var (
 		recursive    bool
 		verbose      bool
-		outputFmt    string
 		outputFile   string
 		minSeverity  string
 		maxDepth     int
@@ -21,16 +63,16 @@ func Execute() error {
 		scanBinaries bool
 	)
 
+	// Pre-process args to extract -o/--output from any position before flag.Parse
+	args, outputFile := extractFlag(os.Args[1:], "o", "output")
+
 	flag.BoolVar(&recursive, "r", false, "Recursively scan directories")
 	flag.BoolVar(&recursive, "recursive", false, "Recursively scan directories")
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
-	flag.StringVar(&outputFmt, "format", "text", "Output format: text, json, csv")
-	flag.StringVar(&outputFile, "output", "", "Write results to file instead of stdout")
 	flag.StringVar(&minSeverity, "severity", "low", "Minimum severity to report: low, medium, high, critical")
 	flag.IntVar(&maxDepth, "depth", -1, "Max recursion depth (-1 = unlimited)")
 	flag.StringVar(&extensions, "ext", "", "Comma-separated file extensions to scan (e.g. .py,.sh,.js). Empty = all")
-	// Add both long and short versions of the binaries flag
 	flag.BoolVar(&scanBinaries, "binaries", false, "Scan binary files using strings command")
 	flag.BoolVar(&scanBinaries, "bin", false, "Scan binary files using strings command (shorthand)")
 
@@ -39,30 +81,32 @@ func Execute() error {
 malcheck - Static malicious behavior analyzer
 
 USAGE:
-  malcheck [flags] <file|directory> [<file|directory>...]
+  malcheck [flags] <file|directory> [<file|directory>...] [-o output]
 
 FLAGS:
   -r, --recursive        Recursively scan directories
   -v, --verbose          Show all matches including context
-      --format string    Output format: text, json, csv (default "text")
-      --output string    Write results to file (default: stdout)
       --severity string  Minimum severity: low, medium, high, critical (default "low")
       --depth int        Max directory recursion depth, -1 = unlimited (default -1)
       --ext string       Comma-separated extensions to scan, empty = all
       --binaries, --bin  Scan binary files using strings command (default: false)
+  -o, --output string    Write results to file (format inferred from extension)
+                           .json  -> JSON output
+                           .csv   -> CSV output
+                           other  -> plain text (default: stdout)
 
 EXAMPLES:
   malcheck suspicious.sh
   malcheck -r ./project
-  malcheck -r --severity high --format json -o report.json ./src
-  malcheck --ext .py,.sh -r /opt/scripts
-  malcheck --bin suspicious.exe  # Example for binary scanning
-  malcheck -r --bin ./directory_with_binaries  # Example with shorthand flag
+  malcheck -r --severity high ./src -o report.json
+  malcheck -r --ext .py,.sh /opt/scripts -o results.csv
+  malcheck --bin suspicious.exe -o report.json
+  malcheck -r --bin ./mixed_directory
 
 `)
 	}
 
-	flag.Parse()
+	flag.CommandLine.Parse(args)
 
 	targets := flag.Args()
 	if len(targets) == 0 {
@@ -84,6 +128,7 @@ EXAMPLES:
 		return err
 	}
 
-	rep := reporter.New(outputFmt, outputFile, cfg.MinSeverity)
+	format := inferFormat(outputFile)
+	rep := reporter.New(format, outputFile, cfg.MinSeverity)
 	return rep.Write(results)
 }

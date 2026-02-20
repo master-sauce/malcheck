@@ -16,8 +16,8 @@ type Rule struct {
 	keywords []string // for fast keyword matching (before regex)
 }
 
-// Match returns (column, matched) for a line
-func (r Rule) Match(line string) (int, bool) {
+// Match returns (column, matchedText, matched) for a line
+func (r Rule) Match(line string) (int, string, bool) {
 	lower := strings.ToLower(line)
 
 	// Keyword pre-filter for speed
@@ -30,19 +30,20 @@ func (r Rule) Match(line string) (int, bool) {
 			}
 		}
 		if !found {
-			return 0, false
+			return 0, "", false
 		}
 	}
 
 	if r.pattern != nil {
 		loc := r.pattern.FindStringIndex(line)
 		if loc == nil {
-			return 0, false
+			return 0, "", false
 		}
-		return loc[0] + 1, true
+		matched := line[loc[0]:loc[1]]
+		return loc[0] + 1, matched, true
 	}
 
-	return 0, false
+	return 0, "", false
 }
 
 func newRule(id, name, category string, sev Severity, details, pattern string, keywords ...string) Rule {
