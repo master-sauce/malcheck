@@ -130,7 +130,7 @@ func baseRules() []Rule {
 
 		newRule("CMD003", "Backtick shell execution (bash/ruby/perl)", "Command Injection", High,
 			"Backtick execution runs shell commands inline",
-			"`[^`]{3,}`",
+			"(?:bash|ruby|perl|python|sh)\\s+.*`[^`]{3,}`|`(?:cat|ls|echo|wget|curl|nc|sh|bash|cmd|powershell|whoami|id|uname|ps|kill|rm|chmod|chown|sudo|su|ifconfig|netstat|iptables|systemctl|service|crontab|nohup|screen|tmux)(?:\\s+[/-][a-zA-Z0-9]+|\\s+[a-zA-Z0-9/.\\-_]+)*`",
 			"`"),
 
 		newRule("CMD004", "Command substitution $(...)", "Command Injection", Medium,
