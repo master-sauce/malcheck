@@ -202,6 +202,3 @@ go build -o malcheck .
 - Obfuscated or packed binaries may evade detection entirely
 - Results should be treated as leads to investigate, not definitive verdicts
 
-## License
-
-MIT
