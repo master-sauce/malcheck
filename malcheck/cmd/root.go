@@ -55,7 +55,6 @@ func extractFlag(args []string, short, long string) (cleaned []string, value str
 func Execute() error {
 	var (
 		recursive    bool
-		verbose      bool
 		outputFile   string
 		minSeverity  string
 		maxDepth     int
@@ -68,11 +67,10 @@ func Execute() error {
 
 	flag.BoolVar(&recursive, "r", false, "Recursively scan directories")
 	flag.BoolVar(&recursive, "recursive", false, "Recursively scan directories")
-	flag.BoolVar(&verbose, "v", false, "Verbose output")
-	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
 	flag.StringVar(&minSeverity, "severity", "low", "Minimum severity to report: low, medium, high, critical")
 	flag.IntVar(&maxDepth, "depth", -1, "Max recursion depth (-1 = unlimited)")
 	flag.StringVar(&extensions, "ext", "", "Comma-separated file extensions to scan (e.g. .py,.sh,.js). Empty = all")
+	flag.StringVar(&extensions, "e", "", "Comma-separated file extensions to scan (shorthand)")
 	flag.BoolVar(&scanBinaries, "binaries", false, "Scan binary files using strings command")
 	flag.BoolVar(&scanBinaries, "bin", false, "Scan binary files using strings command (shorthand)")
 
@@ -85,7 +83,6 @@ USAGE:
 
 FLAGS:
   -r, --recursive        Recursively scan directories
-  -v, --verbose          Show all matches including context
       --severity string  Minimum severity: low, medium, high, critical (default "low")
       --depth int        Max directory recursion depth, -1 = unlimited (default -1)
       --ext string       Comma-separated extensions to scan, empty = all
@@ -116,7 +113,6 @@ EXAMPLES:
 
 	cfg := analyzer.Config{
 		Recursive:    recursive,
-		Verbose:      verbose,
 		MaxDepth:     maxDepth,
 		Extensions:   extensions,
 		MinSeverity:  analyzer.ParseSeverity(minSeverity),

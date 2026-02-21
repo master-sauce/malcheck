@@ -49,7 +49,7 @@ func ParseSeverity(s string) Severity {
 // Config holds scanner options
 type Config struct {
 	Recursive    bool
-	Verbose      bool
+	// Verbose      bool
 	MaxDepth     int
 	Extensions   string // comma-separated, empty = all
 	MinSeverity  Severity

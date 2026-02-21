@@ -14,6 +14,7 @@ type Rule struct {
 	Details  string
 	pattern  *regexp.Regexp
 	keywords []string
+	filter   func(matched string) bool // optional post-match veto
 }
 
 // Match returns (column, matchedText, matched) for a line
@@ -39,6 +40,9 @@ func (r Rule) Match(line string) (int, string, bool) {
 			return 0, "", false
 		}
 		matched := line[loc[0]:loc[1]]
+		if r.filter != nil && !r.filter(matched) {
+			return 0, "", false
+		}
 		return loc[0] + 1, matched, true
 	}
 
@@ -61,6 +65,12 @@ func newRule(id, name, category string, sev Severity, details, pattern string, k
 	}
 }
 
+func newRuleWithFilter(id, name, category string, sev Severity, details, pattern string, filter func(string) bool, keywords ...string) Rule {
+	r := newRule(id, name, category, sev, details, pattern, keywords...)
+	r.filter = filter
+	return r
+}
+
 func DefaultRules() []Rule {
 	return baseRules()
 }
@@ -76,15 +86,15 @@ func DefaultBinaryRules() []Rule {
 func baseRules() []Rule {
 	return []Rule{
 
-		newRule("URL001", "URL in file", "url in file", Medium,
+		newRule("URL001", "URL in file", "Network", Medium,
 			"URL found in file",
 			`(?i)https?://[^\s/$.?#].[^\s]*`,
 			"http://", "https://"),
 
-		newRule("IP001", "IP address in file", "ip in file", Medium,
-			"IPv4 address found in file",
+		newRuleWithFilter("IP001", "Public IP address", "Network", Medium,
+			"Hardcoded public IPv4 address — potential C2 or exfil endpoint",
 			`\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`,
-		),
+			isPublicIPv4),
 
 		// ─── C2 / NETWORK BACKDOOR ───────────────────────────────────────────
 		// These require very specific combinations that legitimate code won't have.
@@ -312,5 +322,59 @@ func baseRules() []Rule {
 			"eval() wrapping an encoded or constructed string — common JS malware pattern",
 			`(?i)\beval\s*\(\s*(atob|unescape|decodeURIComponent|String\.fromCharCode|base64_decode)\s*\(`,
 			"eval", "atob", "unescape", "fromcharcode"),
+
+		// ─── RUNTIME DECRYPTION ─────────────────────────────────────────────────────
+		// Detects patterns of runtime decryption commonly used by malware to hide
+		// malicious payloads that are decoded in memory before execution.
+
+		newRule("DEC001", "XOR decryption loop", "Runtime Decryption", High,
+			"XOR-based decryption loop with hardcoded key - common malware obfuscation",
+			`(?i)(for|while)[\s\S]{0,200}(xor|\^)[\s\S]{0,200}(data|buffer|payload|shellcode)[\s\S]{0,200}(key|cipher)[\s\S]{0,200}[$$$$]`,
+			"xor", "key", "decrypt"),
+
+		newRule("DEC002", "AES decryption with hardcoded key", "Runtime Decryption", High,
+			"AES decryption with hardcoded key - suspicious if combined with immediate execution",
+			`(?i)(AES|aes_decrypt|aes128|aes256|CryptDecrypt)[\s\S]{0,300}(key|password|secret)\s*[:=]\s*["'][^"'\s]{16,}["'][\s\S]{0,200}(exec|eval|invoke|CreateThread|VirtualProtect)`,
+			"aes", "decrypt", "key"),
+
+		newRule("DEC003", "RC4 decryption with execution", "Runtime Decryption", High,
+			"RC4 decryption followed by immediate execution - common malware pattern",
+			`(?i)(rc4|ARC4)[\s\S]{0,200}(key|password)[\s\S]{0,200}(exec|eval|invoke|CreateThread|VirtualProtect|memcpy)`,
+			"rc4", "decrypt", "key"),
+
+		newRule("DEC004", "Base64 decode to executable memory", "Runtime Decryption", Medium,
+			"Base64 decoding to executable memory region - potential shellcode loader",
+			`(?i)(base64_decode|atob|FromBase64String|b64decode)[\s\S]{0,200}(VirtualAlloc|VirtualProtect|malloc|mmap)[\s\S]{0,200}(PAGE_EXECUTE_READWRITE|PROT_EXEC|0x40)`,
+			"base64", "virtualalloc", "execute"),
+
+		newRule("DEC005", "Custom decryption function", "Runtime Decryption", High,
+			"Custom decryption function with hardcoded keys and immediate execution",
+			`(?i)(decrypt|decode|deobfuscate)[\s\S]{0,300}(key|secret|password)\s*[:=]\s*["'][^"'\s]{8,}["'][\s\S]{0,300}(exec|eval|invoke|CreateThread|VirtualProtect)`,
+			"decrypt", "key", "exec"),
+
+		newRule("DEC006", "Multi-stage decryption", "Runtime Decryption", High,
+			"Multiple decryption layers - common in sophisticated malware",
+			`(?i)(decrypt|decode)[\s\S]{0,200}(decrypt|decode)[\s\S]{0,200}(exec|eval|invoke|CreateThread|VirtualProtect)`,
+			"decrypt", "decode", "exec"),
+
+		newRule("DEC007", "Shellcode XOR with single-byte key", "Runtime Decryption", High,
+			"Shellcode XOR decryption with single-byte key - classic malware pattern",
+			`(?i)(for|while)[\s\S]{0,200}(byte|uint8|char)[\s\S]{0,200}(xor|\^)\s*0x[0-9a-f]{2}[\s\S]{0,200}(shellcode|payload|buffer)[\s\S]{0,200}(jmp|call|ret)`,
+			"xor", "shellcode", "0x"),
+
+		newRule("DEC008", "Dynamic API resolution after decryption", "Runtime Decryption", Critical,
+			"Decrypting API function names and resolving them dynamically - common evasion",
+			`(?i)(decrypt|decode)[\s\S]{0,200}(GetProcAddress|GetModuleHandle|dlsym)[\s\S]{0,200}(LoadLibrary|dlopen)`,
+			"decrypt", "getprocaddress", "loadlibrary"),
+
+		newRule("DEC009", "Encrypted payload in resources", "Runtime Decryption", High,
+			"Extracting and decrypting payload from embedded resources",
+			`(?i)(FindResource|LoadResource|LockResource)[\s\S]{0,300}(decrypt|decode|aes|des|rc4|xor)[\s\S]{0,200}(VirtualProtect|CreateThread|exec)`,
+			"resource", "decrypt", "execute"),
+
+		newRule("DEC010", "Polymorphic decryption routine", "Runtime Decryption", Critical,
+			"Self-modifying decryption routine - highly indicative of malware",
+			`(?i)(VirtualProtect|PAGE_EXECUTE_READWRITE|PROT_EXEC)[\s\S]{0,200}(memcpy|memset|xor)[\s\S]{0,200}(decrypt|decode)[\s\S]{0,200}(jmp|call|ret)`,
+			"virtualprotect", "decrypt", "self-modifying"),
 	}
 }
